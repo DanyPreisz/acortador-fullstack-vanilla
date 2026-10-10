@@ -9,7 +9,7 @@
 <body>
   <main class="shell">
     <section id="auth-view" class="auth card">
-      <p class="eyebrow">Links</p>
+      <p class="eyebrow">QR</p>
       <h1>Acortador</h1>
       <div class="tabs">
         <button class="tab active" type="button" data-mode="login">Entrar</button>
@@ -24,11 +24,11 @@
     </section>
     <section id="app-view" class="hidden">
       <header>
-        <div><p class="eyebrow">Vanilla JS · Mongo</p><h1>Acortador</h1></div>
+        <div><p class="eyebrow">Enlace corto</p><h1>Acortador</h1></div>
         <div class="who"><strong id="user-name"></strong><button id="logout" class="ghost" type="button">Salir</button></div>
       </header>
       <form id="link-form" class="card form">
-        <input id="url" placeholder="https://..." maxlength="500" required />
+        <input id="url" type="url" placeholder="https://..." maxlength="500" required />
         <button class="primary" type="submit">Acortar</button>
       </form>
       <p id="form-error" class="error" hidden></p>
