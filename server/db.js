@@ -17,4 +17,4 @@ export async function connect() {
 export const users = () => db.collection("users");
 export const links = () => db.collection("links");
 export function toId(value) { return ObjectId.isValid(value) ? new ObjectId(String(value)) : null; }
-export function mapLink(doc) { return { id: String(doc._id), code: doc.code, url: doc.url, clicks: doc.clicks || 0, createdAt: doc.createdAt }; }
+export function mapLink(doc, origin) { return { id: String(doc._id), code: doc.code, url: doc.url, short: `${origin}/s/${doc.code}` }; }
