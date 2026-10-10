@@ -1,29 +1,32 @@
+import { randomBytes } from "node:crypto";
 import { URL } from "node:url";
-import { connect, isReady, users, links, toId, mapLink } from "./db.js";
+import { connect, isReady, links, mapLink, toId, users } from "./db.js";
 import { createApp, readJson, sendEmpty, sendJson, serveStatic } from "./http.js";
-import { getUserFromRequest, hashPassword, shortCode, signToken, verifyPassword } from "./middleware/auth.js";
+import { getUserFromRequest, hashPassword, signToken, verifyPassword } from "./middleware/auth.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 function usernameQuery(username) { return new RegExp("^" + username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i"); }
 function requireUser(req, res) { const user = getUserFromRequest(req); if (!user) { sendJson(res, 401, { error: "No autenticado" }); return null; } return user; }
-function urlOf(value) { const url = String(value || "").trim().slice(0, 500); return /^https?:\/\//i.test(url) ? url : ""; }
+function originOf(req) { return `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host || "localhost"}`; }
+function codeOf() { return randomBytes(4).toString("hex").slice(0, 6); }
 
 const server = createApp(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const { pathname } = url;
   const method = req.method || "GET";
   if (pathname === "/health") return sendJson(res, 200, { ok: true, db: isReady() });
-  const redirect = pathname.match(/^\/s\/([A-Za-z0-9_-]{4,8})$/);
-  if (redirect && method === "GET") {
+  if (pathname.startsWith("/api/") && !isReady()) return sendJson(res, 503, { error: "Base no lista" });
+
+  const short = pathname.match(/^\/s\/([a-z0-9]{4,10})$/i);
+  if (short && method === "GET") {
     if (!isReady()) return sendJson(res, 503, { error: "Base no lista" });
-    const link = await links().findOneAndUpdate({ code: redirect[1] }, { $inc: { clicks: 1 } }, { returnDocument: "after" });
-    if (!link) return sendJson(res, 404, { error: "Link no encontrado" });
-    res.writeHead(302, { Location: link.url });
+    const row = await links().findOne({ code: short[1].toLowerCase() });
+    if (!row) return sendJson(res, 404, { error: "Codigo no encontrado" });
+    res.writeHead(302, { Location: row.url });
     return res.end();
   }
-  if (pathname.startsWith("/api/") && !isReady()) return sendJson(res, 503, { error: "Base no lista" });
   if (!pathname.startsWith("/api/")) return serveStatic(req, res);
 
   if (method === "POST" && pathname === "/api/auth/register") {
@@ -48,27 +51,25 @@ const server = createApp(async (req, res) => {
   if (method === "GET" && pathname === "/api/auth/me") {
     const user = requireUser(req, res);
     if (!user) return;
-    const row = await users().findOne({ _id: toId(user.id) });
-    if (!row) return sendJson(res, 401, { error: "Usuario no encontrado" });
-    return sendJson(res, 200, { user: { id: String(row._id), username: row.username } });
+    return sendJson(res, 200, { user });
   }
 
   const user = requireUser(req, res);
   if (!user) return;
   const userId = user.id;
+  const origin = originOf(req);
 
   if (method === "GET" && pathname === "/api/links") {
-    const rows = await links().find({ userId }).sort({ createdAt: -1 }).limit(100).toArray();
-    return sendJson(res, 200, { links: rows.map(mapLink) });
+    const rows = await links().find({ userId }).sort({ createdAt: -1 }).limit(40).toArray();
+    return sendJson(res, 200, { links: rows.map((row) => mapLink(row, origin)) });
   }
   if (method === "POST" && pathname === "/api/links") {
     const body = await readJson(req);
-    const target = urlOf(body.url);
-    if (!target) return sendJson(res, 400, { error: "La URL debe empezar con http:// o https://" });
-    let code = shortCode();
-    for (let i = 0; i < 3 && await links().findOne({ code }); i += 1) code = shortCode();
-    const result = await links().insertOne({ userId, code, url: target, clicks: 0, createdAt: new Date() });
-    return sendJson(res, 201, { link: mapLink(await links().findOne({ _id: result.insertedId })) });
+    const target = String(body.url || "").trim();
+    if (!/^https?:\/\//i.test(target)) return sendJson(res, 400, { error: "La URL debe empezar con http o https" });
+    const code = codeOf();
+    const result = await links().insertOne({ userId, code, url: target.slice(0, 500), createdAt: new Date() });
+    return sendJson(res, 201, { link: mapLink(await links().findOne({ _id: result.insertedId }), origin) });
   }
   const match = pathname.match(/^\/api\/links\/([a-fA-F0-9]{24})$/);
   if (match && method === "DELETE") {

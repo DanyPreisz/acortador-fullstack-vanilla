@@ -18,26 +18,25 @@ function setMode(next) {
 async function refresh() {
   const data = await api("/api/links");
   listEl.innerHTML = "";
-  if (!data.links.length) {
-    const empty = document.createElement("li");
-    empty.textContent = "No hay links.";
-    listEl.append(empty);
-    return;
-  }
   data.links.forEach((link) => {
     const li = document.createElement("li");
     li.className = "item";
-    const short = document.createElement("a");
-    short.href = `/s/${link.code}`;
-    short.textContent = `/s/${link.code}`;
-    const target = document.createElement("small");
-    target.textContent = `${link.url} \u00b7 ${link.clicks} clics`;
+    const text = document.createElement("span");
+    const a = document.createElement("a");
+    a.href = link.short;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    a.textContent = link.short;
+    text.append(a, document.createTextNode(` \u2192 ${link.url}`));
+    const img = document.createElement("img");
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link.short)}`;
+    img.alt = "QR";
     const del = document.createElement("button");
     del.type = "button";
     del.className = "ghost";
     del.textContent = "Borrar";
     del.addEventListener("click", async () => { await api(`/api/links/${link.id}`, { method: "DELETE" }); await refresh(); });
-    li.append(short, target, del);
+    li.append(text, img, del);
     listEl.append(li);
   });
 }
